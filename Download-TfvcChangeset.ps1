@@ -56,7 +56,8 @@ $headers = @{
     Authorization = "Basic $base64Auth"
 }
 
-$baseUrl = "https://dev.azure.com/$Organization/$Project/_apis/tfvc"
+# TFVC APIs are organization-scoped (not project-scoped)
+$baseUrl = "https://dev.azure.com/$Organization/_apis/tfvc"
 
 # --- Step 1: Get changeset details (list of changed items) ---
 Write-Host "Fetching changeset $ChangesetId..." -ForegroundColor Cyan
@@ -79,8 +80,13 @@ if (-not $changes -or $changes.Count -eq 0) {
 Write-Host "Found $($changes.Count) change(s) in changeset $ChangesetId." -ForegroundColor Green
 
 # Filter to files only (exclude folders) and exclude deletes
+# The API may return 'isFolder' or identify folders by item type or trailing '/'
 $filesToDownload = $changes | Where-Object {
-    $_.item.isFolder -ne $true -and $_.changeType -notmatch 'delete'
+    $item = $_.item
+    $isFolder = ($item.PSObject.Properties['isFolder'] -and $item.isFolder) -or
+                ($item.PSObject.Properties['isBranch'] -and $item.isBranch) -or
+                ($item.path -and $item.path.EndsWith('/'))
+    (-not $isFolder) -and ($_.changeType -notmatch 'delete')
 }
 
 if ($filesToDownload.Count -eq 0) {
